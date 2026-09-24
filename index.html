@@ -5,20 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pharmacy Serverless POS</title>
   
-  <!-- MOBILE CRASH DETECTOR -->
-  <script>
-    window.onerror = function(msg, url, line) {
-      document.body.innerHTML = `
-      <div style="padding:20px; font-family:sans-serif;">
-        <h2 style="color:red;">🚨 Fatal Setup Error</h2>
-        <p style="color:red; font-weight:bold;">${msg}</p>
-        <p><strong>Line:</strong> ${line}</p>
-        <p>If you see a "SyntaxError", you accidentally deleted a quote ( ' ) when pasting your key.</p>
-        <p>If you see "supabase is not defined", your internet connection is blocking the database library.</p>
-      </div>`;
-    };
-  </script>
-
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { font-family: system-ui, sans-serif; background: #f4f4f9; padding: 1rem; margin: 0; }
@@ -52,12 +38,13 @@
     const SUPABASE_URL = 'https://swzfhljzgutgmmzgkpaz.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3emZobGp6Z3V0Z21temdrcGF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNDY3MjEsImV4cCI6MjEwNTgyMjcyMX0.wYpeiODN7CJQbE0D17BynF4NZCf36Xh9n8vBJuV1578';
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Renamed to 'db' to fix the naming collision
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const appState = { masterInventory: [], cart: [] };
 
     async function loadInventory() {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('inventory_batches')
           .select('batchid, expirydate, stockqty, mrp, medicines(medid, name)')
           .gt('stockqty', 0)
@@ -108,7 +95,7 @@
       if (appState.cart.length === 0) return alert('Cart is empty!');
       const totalAmount = appState.cart.reduce((sum, item) => sum + item.lineTotal, 0);
 
-      const { data, error } = await supabase.rpc('process_checkout', {
+      const { data, error } = await db.rpc('process_checkout', {
         cart_items: appState.cart, total_amount: totalAmount
       });
 
