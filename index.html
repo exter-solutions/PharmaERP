@@ -1,21 +1,366 @@
-            <strong>₹${parseFloat(sale.totalamount).toFixed(2)}</strong>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pharma ERP | V3.1</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root { 
+      --primary: #0f172a; --accent: #3b82f6; --success: #10b981; 
+      --warning: #f59e0b; --danger: #ef4444; --bg: #f1f5f9; --surface: #ffffff;
+      --text-main: #334155; --text-muted: #64748b;
+    }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text-main); margin: 0; padding-bottom: 80px; }
+    
+    header { background: var(--primary); color: white; padding: 1.2rem 1rem; text-align: center; font-weight: 600; font-size: 1.1rem; position: sticky; top: 0; z-index: 100; }
+    
+    /* 5-Item Navigation */
+    .bottom-nav { position: fixed; bottom: 0; width: 100%; background: var(--surface); display: flex; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05); z-index: 100; border-top: 1px solid #e2e8f0; }
+    .nav-btn { flex: 1; padding: 0.6rem 0; border: none; background: none; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .nav-btn span { font-size: 1.3rem; }
+    .nav-btn.active { color: var(--accent); border-top: 2px solid var(--accent); }
+    
+    .tab-content { display: none; padding: 1rem; max-width: 800px; margin: auto; animation: fadeIn 0.3s ease; }
+    .tab-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .card { background: var(--surface); padding: 1.2rem; border-radius: 12px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+    
+    .search-bar, .form-control { width: 100%; padding: 0.7rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 1rem; background: var(--bg); margin-bottom: 0.8rem; }
+    .search-bar:focus, .form-control:focus { border-color: var(--accent); outline: none; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-main); }
+    
+    .item-row { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid #f1f5f9; }
+    .item-row:last-child { border-bottom: none; }
+    
+    .badge { padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+    .bg-success { background: #d1fae5; color: #047857; }
+    .bg-warning { background: #fef3c7; color: #b45309; }
+    .bg-danger { background: #fee2e2; color: #b91c1c; }
+    
+    .btn { background: var(--accent); color: white; border: none; padding: 0.6rem 1rem; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    .btn-success { background: var(--success); width: 100%; font-size: 1.1rem; padding: 1rem; border-radius: 8px; margin-top: 0.5rem; }
+    .btn-edit { background: #f1f5f9; color: var(--accent); padding: 0.4rem 0.8rem; }
+    
+    .stat-box { background: var(--primary); color: white; padding: 1.5rem; border-radius: 12px; text-align: center; margin-bottom: 1rem; }
+    .stat-box h2 { margin: 0; font-size: 2.2rem; }
+    
+    /* Modals */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-box { background: white; padding: 1.5rem; border-radius: 8px; width: 90%; max-width: 400px; }
+  </style>
+</head>
+<body>
+
+  <header>🏥 Pharma ERP | V3.1</header>
+
+  <!-- 1. POS TAB -->
+  <div id="tab-billing" class="tab-content active">
+    <div class="card">
+      <h3 style="margin-top:0;">🛒 Point of Sale</h3>
+      <input type="text" id="posSearch" class="search-bar" placeholder="🔍 Search inventory..." onkeyup="renderPOSInventory()">
+      <div id="posInventoryList">Loading inventory...</div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">🧾 Active Cart</h3>
+      <div id="cartList">Cart is empty</div>
+      <h2 style="text-align: right; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top:15px;">Total: ₹<span id="cartTotal">0.00</span></h2>
+      <div style="background: var(--bg); padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+        <h4 style="margin-top:0; margin-bottom:0.5rem;">📋 Patient Info (Optional)</h4>
+        <input type="text" id="billPatientName" class="form-control" placeholder="Patient Name">
+        <input type="text" id="billDoctorName" class="form-control" placeholder="Referred By (Dr.)">
+      </div>
+      <button class="btn btn-success" onclick="processCheckout()">💳 Checkout & Save</button>
+    </div>
+  </div>
+
+  <!-- 2. INWARD / PURCHASE ENTRY TAB -->
+  <div id="tab-inward" class="tab-content">
+    <div class="card">
+      <h3 style="margin-top:0; color:var(--accent);">📥 Purchase Entry & Bill</h3>
+      <form id="purchaseForm" onsubmit="submitPurchaseEntry(event)">
+        
+        <div style="background:#f8fafc; padding:10px; border-radius:8px; margin-bottom:15px; border: 1px solid #e2e8f0;">
+          <h4 style="margin:0 0 10px 0;">Supplier Details</h4>
+          <input type="text" id="purSupplier" class="form-control" placeholder="Supplier / Vendor Name" required>
+          <input type="text" id="purInvoice" class="form-control" placeholder="Invoice Number" required>
+          <div class="form-group">
+            <label>📸 Upload Bill (Photo/File)</label>
+            <input type="file" id="purFile" class="form-control" accept="image/*" capture="environment">
           </div>
-        `).join('');
+        </div>
+
+        <div style="background:#f8fafc; padding:10px; border-radius:8px; border: 1px solid #e2e8f0;">
+          <h4 style="margin:0 0 10px 0;">Stock Details</h4>
+          <select id="newMedId" class="form-control" required></select>
+          <div style="display: flex; gap: 1rem;">
+            <input type="text" id="newBatchNum" class="form-control" placeholder="Batch No." required>
+            <input type="date" id="newExpDate" class="form-control" required>
+          </div>
+          <div style="display: flex; gap: 1rem;">
+            <input type="number" id="newQty" class="form-control" placeholder="Qty" min="1" required>
+            <input type="number" step="0.01" id="newMrp" class="form-control" placeholder="MRP (₹)" required>
+          </div>
+        </div>
+
+        <button type="submit" class="btn" style="width:100%; margin-top:15px; padding:1rem; font-size:1.1rem;">Save Purchase Entry</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. INVENTORY TAB -->
+  <div id="tab-inventory" class="tab-content">
+    <div class="card">
+      <h3 style="margin-top:0;">📦 Current Stock</h3>
+      <div id="masterStockList">Loading...</div>
+    </div>
+  </div>
+
+  <!-- 4. CATALOG (MEDICINES) TAB -->
+  <div id="tab-catalog" class="tab-content">
+    <div class="card">
+      <h3 style="margin-top:0; color:var(--success);">💊 Register Drug Brand</h3>
+      <form onsubmit="submitNewMedicine(event)" style="display:flex; gap:10px;">
+        <div style="flex:2;">
+          <input type="text" id="catMedName" class="form-control" placeholder="Medicine Name" required style="margin-bottom:5px;">
+          <input type="text" id="catMedMfg" class="form-control" placeholder="Manufacturer" required style="margin-bottom:0;">
+        </div>
+        <button type="submit" class="btn bg-success" style="flex:1; color:white;">Add</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">📚 Master Catalog</h3>
+      <div id="catalogList">Loading...</div>
+    </div>
+  </div>
+
+  <!-- 5. REPORTS TAB -->
+  <div id="tab-reports" class="tab-content">
+    <div class="stat-box">
+      <p style="margin:0;">Lifetime Revenue</p>
+      <h2>₹<span id="totalRevenue">0.00</span></h2>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">📉 Recent Sales</h3>
+      <div id="salesList">Loading data...</div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">📥 Recent Purchases</h3>
+      <div id="purchaseHistoryList">Loading data...</div>
+    </div>
+  </div>
+
+  <!-- 5-TAB BOTTOM NAVIGATION -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" onclick="switchTab('billing', this)"><span>🛒</span>POS</button>
+    <button class="nav-btn" onclick="switchTab('inward', this)"><span>📥</span>Inward</button>
+    <button class="nav-btn" onclick="switchTab('inventory', this)"><span>📦</span>Stock</button>
+    <button class="nav-btn" onclick="switchTab('catalog', this)"><span>💊</span>Catalog</button>
+    <button class="nav-btn" onclick="switchTab('reports', this)"><span>📊</span>Reports</button>
+  </div>
+
+  <!-- EDIT MEDICINE MODAL -->
+  <div id="editMedModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>Edit Medicine</h3>
+      <input type="hidden" id="editMedId">
+      <div class="form-group">
+        <label>Name & Strength</label>
+        <input type="text" id="editMedName" class="form-control">
+      </div>
+      <div class="form-group">
+        <label>Manufacturer</label>
+        <input type="text" id="editMedMfg" class="form-control">
+      </div>
+      <div style="display:flex; gap:10px; margin-top:15px;">
+        <button class="btn" style="flex:1; background:#94a3b8;" onclick="closeModals()">Cancel</button>
+        <button class="btn bg-success" style="flex:1;" onclick="saveEditedMedicine()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BILL IMAGE PREVIEW MODAL -->
+  <div id="billPreviewModal" class="modal-overlay" onclick="closeModals()">
+    <div class="modal-box" style="text-align:center;">
+      <h3 style="margin-top:0;">Bill Invoice</h3>
+      <img id="billPreviewImage" style="max-width:100%; border-radius:8px; max-height: 60vh; object-fit:contain;">
+      <button class="btn" style="width:100%; margin-top:15px; background:var(--primary);">Close</button>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://swzfhljzgutgmmzgkpaz.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3emZobGp6Z3V0Z21temdrcGF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNDY3MjEsImV4cCI6MjEwNTgyMjcyMX0.wYpeiODN7CJQbE0D17BynF4NZCf36Xh9n8vBJuV1578';
+
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const appState = { inventory: [], catalog: [], cart: [], sales: [], purchases: [] };
+
+    // --- NAVIGATION & MODALS ---
+    function switchTab(tabId, btnElement) {
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + tabId).classList.add('active');
+      btnElement.classList.add('active');
+      if(tabId === 'reports') loadReports();
+    }
+
+    function closeModals() {
+      document.getElementById('editMedModal').style.display = 'none';
+      document.getElementById('billPreviewModal').style.display = 'none';
+    }
+
+    // --- DATA FETCHING ---
+    async function initSystem() {
+      await loadCatalog();
+      await loadInventory();
+    }
+
+    async function loadCatalog() {
+      try {
+        const { data, error } = await db.from('medicines').select('*').order('name', { ascending: true });
+        if (error) throw error;
+        
+        appState.catalog = data || [];
+        renderCatalog();
+        
+        const select = document.getElementById('newMedId');
+        if(appState.catalog.length > 0) {
+          select.innerHTML = appState.catalog.map(m => `<option value="${m.medid}">${m.name}</option>`).join('');
+        } else {
+          select.innerHTML = `<option value="">Register a medicine first</option>`;
+        }
+      } catch (err) {
+        document.getElementById('catalogList').innerHTML = `<span style="color:red;">Error loading catalog: ${err.message}</span>`;
+      }
+    }
+
+    async function loadInventory() {
+      try {
+        const { data, error } = await db.from('inventory_batches').select('batchid, batchnumber, expirydate, stockqty, mrp, medicines(medid, name)').order('expirydate', { ascending: true });
+        if (error) throw error;
+        
+        appState.inventory = data || [];
+        renderPOSInventory();
+        renderBatchRegistry();
+      } catch (err) {
+        document.getElementById('posInventoryList').innerHTML = `<span style="color:red;">Error loading inventory: ${err.message}</span>`;
+      }
+    }
+
+    // --- CATALOG EDIT LOGIC ---
+    function openEditMed(id, name, mfg) {
+      document.getElementById('editMedId').value = id;
+      document.getElementById('editMedName').value = name;
+      document.getElementById('editMedMfg').value = mfg;
+      document.getElementById('editMedModal').style.display = 'flex';
+    }
+
+    async function saveEditedMedicine() {
+      const id = document.getElementById('editMedId').value;
+      const newName = document.getElementById('editMedName').value;
+      const newMfg = document.getElementById('editMedMfg').value;
+
+      const { error } = await db.from('medicines').update({ name: newName, manufacturer: newMfg }).eq('medid', id);
+      
+      if(error) alert('Failed to update: ' + error.message);
+      else {
+        closeModals();
+        await loadCatalog();
+        await loadInventory(); 
+      }
+    }
+
+    async function submitNewMedicine(e) {
+      e.preventDefault();
+      const payload = { medid: 'M-' + Math.floor(1000 + Math.random() * 9000), name: document.getElementById('catMedName').value, manufacturer: document.getElementById('catMedMfg').value };
+      await db.from('medicines').insert([payload]);
+      e.target.reset();
+      await loadCatalog();
+    }
+
+    // --- PURCHASE ENTRY & BILL UPLOAD LOGIC ---
+    async function submitPurchaseEntry(e) {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      btn.innerText = "Uploading & Saving..."; btn.disabled = true;
+
+      const fileInput = document.getElementById('purFile');
+      let base64Image = null;
+      
+      if (fileInput.files && fileInput.files[0]) {
+        base64Image = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsDataURL(fileInput.files[0]);
+        });
       }
 
-      // Load Purchases
-      const { data: pData } = await db.from('purchases').select('*').order('purchase_date', { ascending: false }).limit(20);
-      if (pData) {
-        document.getElementById('purchaseHistoryList').innerHTML = pData.map(pur => `
-          <div class="item-row">
-            <div>
-              <strong>${pur.supplier_name}</strong><br>
-              <small>Inv: ${pur.invoice_no}</small>
+      const purchasePayload = {
+        invoice_no: document.getElementById('purInvoice').value,
+        supplier_name: document.getElementById('purSupplier').value,
+        bill_image_base64: base64Image
+      };
+
+      const { data: pData, error: pError } = await db.from('purchases').insert([purchasePayload]).select();
+      
+      if (pError) {
+        alert("Purchase Log Failed: " + pError.message);
+        btn.innerText = "Save Purchase Entry"; btn.disabled = false;
+        return;
+      }
+
+      const batchPayload = {
+        batchid: 'B-' + Math.floor(1000 + Math.random() * 9000),
+        medid: document.getElementById('newMedId').value,
+        batchnumber: document.getElementById('newBatchNum').value,
+        expirydate: document.getElementById('newExpDate').value,
+        stockqty: parseInt(document.getElementById('newQty').value),
+        mrp: parseFloat(document.getElementById('newMrp').value),
+        purchase_id: pData[0].purchase_id
+      };
+
+      await db.from('inventory_batches').insert([batchPayload]);
+
+      alert('✅ Purchase & Bill Saved Successfully!');
+      e.target.reset();
+      await loadInventory();
+      btn.innerText = "Save Purchase Entry"; btn.disabled = false;
+    }
+
+    // --- REPORTS & BILL VIEWING ---
+    async function loadReports() {
+      try {
+        const { data: sData, error: sError } = await db.from('sales').select('*').order('timestamp', { ascending: false }).limit(20);
+        if (sError) throw sError;
+        
+        if (sData) {
+          document.getElementById('totalRevenue').innerText = sData.reduce((sum, s) => sum + parseFloat(s.totalamount), 0).toFixed(2);
+          document.getElementById('salesList').innerHTML = sData.map(sale => `
+            <div class="item-row">
+              <div><strong>Sale #${sale.saleid}</strong><br><small>${sale.patientname || 'Walk-in'}</small></div>
+              <strong>₹${parseFloat(sale.totalamount).toFixed(2)}</strong>
             </div>
-            ${pur.bill_image_base64 ? `<button class="btn btn-edit" onclick="viewBill('${pur.purchase_id}')">👁️ View Bill</button>` : '<small>No Image</small>'}
-          </div>
-        `).join('');
-        appState.purchases = pData;
+          `).join('');
+        }
+
+        const { data: pData, error: pError } = await db.from('purchases').select('*').order('purchase_date', { ascending: false }).limit(20);
+        if (pError) throw pError;
+        
+        if (pData) {
+          document.getElementById('purchaseHistoryList').innerHTML = pData.map(pur => `
+            <div class="item-row">
+              <div>
+                <strong>${pur.supplier_name}</strong><br>
+                <small>Inv: ${pur.invoice_no}</small>
+              </div>
+              ${pur.bill_image_base64 ? `<button class="btn btn-edit" onclick="viewBill('${pur.purchase_id}')">👁️ View Bill</button>` : '<small>No Image</small>'}
+            </div>
+          `).join('');
+          appState.purchases = pData;
+        }
+      } catch(err) {
+        alert("Report Error: " + err.message);
       }
     }
 
@@ -27,7 +372,7 @@
       }
     }
 
-    // --- POS RENDERING & CART (UNCHANGED CORE LOGIC) ---
+    // --- POS RENDERING & CART ---
     function renderPOSInventory() {
       const search = document.getElementById('posSearch').value.toLowerCase();
       let filtered = appState.inventory.filter(i => i.stockqty > 0 && i.medicines.name.toLowerCase().includes(search));
@@ -53,12 +398,17 @@
     }
 
     function renderCatalog() {
-      document.getElementById('catalogList').innerHTML = appState.catalog.map(item => `
+      document.getElementById('catalogList').innerHTML = appState.catalog.map(item => {
+        let safeMfg = item.manufacturer || 'Unknown';
+        let escapedName = (item.name || '').replace(/'/g, "\\'");
+        let escapedMfg = safeMfg.replace(/'/g, "\\'");
+        
+        return `
         <div class="item-row">
-          <div><strong style="color:var(--primary);">${item.name}</strong><br><small>${item.manufacturer}</small></div>
-          <button class="btn btn-edit" onclick="openEditMed('${item.medid}', '${item.name.replace(/'/g, "\\'")}', '${item.manufacturer.replace(/'/g, "\\'")}')">✏️ Edit</button>
+          <div><strong style="color:var(--primary);">${item.name}</strong><br><small>${safeMfg}</small></div>
+          <button class="btn btn-edit" onclick="openEditMed('${item.medid}', '${escapedName}', '${escapedMfg}')">✏️ Edit</button>
         </div>
-      `).join('');
+      `}).join('');
     }
 
     function addToCart(medId, name) {
@@ -99,6 +449,8 @@
         alert('Sale Complete! ID: ' + data);
         appState.cart = []; document.getElementById('billPatientName').value = '';
         await loadInventory(); renderCart();
+      } else {
+        alert('Checkout Failed: ' + error.message);
       }
     }
 
