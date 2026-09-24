@@ -3,34 +3,125 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pharmacy Serverless POS</title>
-  
+  <title>Pharmacy ERP Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    body { font-family: system-ui, sans-serif; background: #f4f4f9; padding: 1rem; margin: 0; }
-    .grid { display: flex; gap: 1rem; flex-wrap: wrap; }
-    .panel { background: white; padding: 1rem; border-radius: 8px; flex: 1; min-width: 300px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .item-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #eee; }
-    button { background: #3498db; color: white; border: none; padding: 0.5rem; border-radius: 4px; cursor: pointer; }
-    button.checkout { background: #27ae60; width: 100%; font-size: 1.1rem; padding: 1rem; margin-top: 1rem; }
-    .error-text { color: red; font-weight: bold; }
+    :root { --primary: #2c3e50; --success: #27ae60; --bg: #f4f7f6; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); margin: 0; padding-bottom: 70px; }
+    
+    /* Header & Navigation */
+    header { background: var(--primary); color: white; padding: 1rem; text-align: center; font-weight: bold; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .bottom-nav { position: fixed; bottom: 0; width: 100%; background: white; display: flex; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 100; }
+    .nav-btn { flex: 1; padding: 1rem; border: none; background: none; font-size: 1rem; font-weight: 600; color: #7f8c8d; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .nav-btn.active { color: var(--primary); border-top: 3px solid var(--primary); }
+
+    /* Layout */
+    .tab-content { display: none; padding: 1rem; max-width: 800px; margin: auto; }
+    .tab-content.active { display: block; }
+    .card { background: white; padding: 1rem; border-radius: 12px; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    
+    /* Lists & Tables */
+    .item-row { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #eee; }
+    .item-row:last-child { border-bottom: none; }
+    .badge { background: #e8f5e9; color: var(--success); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+    
+    /* Buttons & Forms */
+    .btn { background: #3498db; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .btn-success { background: var(--success); width: 100%; font-size: 1.1rem; padding: 1rem; margin-top: 1rem; }
+    .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); width: 100%; padding: 0.8rem; margin-top: 0.5rem; border-radius: 6px; font-weight: bold; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.9rem; font-weight: bold; margin-bottom: 0.3rem; color: var(--primary); }
+    .form-control { width: 100%; padding: 0.8rem; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+    
+    /* Modal / Preview */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+    .receipt-box { background: white; padding: 2rem; border-radius: 8px; width: 90%; max-width: 400px; font-family: monospace; }
+    .receipt-box h3 { text-align: center; margin-top: 0; border-bottom: 1px dashed #ccc; padding-bottom: 10px; }
+    .receipt-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
   </style>
 </head>
 <body>
 
-  <h2>Advanced Pharmacy Billing</h2>
-  
-  <div class="grid">
-    <div class="panel">
-      <h3>Inventory (Tap to add)</h3>
-      <div id="inventoryList">Loading inventory...</div>
+  <header>🏥 Pharma POS & Inventory</header>
+
+  <!-- POS / BILLING TAB -->
+  <div id="tab-billing" class="tab-content active">
+    <div class="card">
+      <h3 style="margin-top:0;">🛒 Available Stock</h3>
+      <div id="posInventoryList">Loading inventory...</div>
     </div>
 
-    <div class="panel">
-      <h3>Current Bill</h3>
-      <div id="cartList">Cart is empty</div>
-      <h3 style="text-align: right;">Total: ₹<span id="cartTotal">0.00</span></h3>
-      <button class="checkout" onclick="processCheckout()">Checkout Securely</button>
+    <div class="card">
+      <h3 style="margin-top:0;">🧾 Current Cart</h3>
+      <div id="cartList" style="color:#7f8c8d; font-style:italic;">Cart is empty</div>
+      <h2 style="text-align: right; border-top: 1px solid #eee; padding-top: 10px;">Total: ₹<span id="cartTotal">0.00</span></h2>
+      <button class="btn-outline" onclick="previewReceipt()">👁️ Preview Bill</button>
+      <button class="btn btn-success" onclick="processCheckout()">✅ Checkout Securely</button>
+    </div>
+  </div>
+
+  <!-- STOCK MANAGEMENT TAB -->
+  <div id="tab-stock" class="tab-content">
+    
+    <div class="card">
+      <h3 style="margin-top:0; color:var(--success);">➕ Add New Batch</h3>
+      <form id="addBatchForm" onsubmit="submitNewBatch(event)">
+        <div class="form-group">
+          <label>Medicine</label>
+          <select id="newMedId" class="form-control" required>
+            <option value="">Loading medicines...</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+          <div class="form-group" style="flex: 1;">
+            <label>Batch No.</label>
+            <input type="text" id="newBatchNum" class="form-control" placeholder="e.g. BT-99" required>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Expiry Date</label>
+            <input type="date" id="newExpDate" class="form-control" required>
+          </div>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+          <div class="form-group" style="flex: 1;">
+            <label>Quantity</label>
+            <input type="number" id="newQty" class="form-control" min="1" required>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>MRP (₹)</label>
+            <input type="number" step="0.01" id="newMrp" class="form-control" required>
+          </div>
+        </div>
+        <button type="submit" class="btn" style="width:100%;">Save to Database</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">📦 Master Inventory Overview</h3>
+      <div id="masterStockList">Loading...</div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAVIGATION -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" onclick="switchTab('billing', this)">
+      <span>🛒</span> Billing
+    </button>
+    <button class="nav-btn" onclick="switchTab('stock', this)">
+      <span>📦</span> Stock
+    </button>
+  </div>
+
+  <!-- RECEIPT PREVIEW MODAL -->
+  <div id="receiptModal" class="modal-overlay">
+    <div class="receipt-box">
+      <h3>PHARMACY RECEIPT</h3>
+      <div id="receiptBody"></div>
+      <div style="border-top: 1px dashed #ccc; margin-top: 10px; padding-top: 10px;" class="receipt-row">
+        <strong>TOTAL:</strong>
+        <strong>₹<span id="receiptTotal">0.00</span></strong>
+      </div>
+      <button class="btn" style="width:100%; margin-top:20px; background:#e74c3c;" onclick="closePreview()">Close</button>
     </div>
   </div>
 
@@ -38,9 +129,29 @@
     const SUPABASE_URL = 'https://swzfhljzgutgmmzgkpaz.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3emZobGp6Z3V0Z21temdrcGF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNDY3MjEsImV4cCI6MjEwNTgyMjcyMX0.wYpeiODN7CJQbE0D17BynF4NZCf36Xh9n8vBJuV1578';
 
-    // Renamed to 'db' to fix the naming collision
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const appState = { masterInventory: [], cart: [] };
+    const appState = { masterInventory: [], cart: [], medicinesList: [] };
+
+    // --- UI NAVIGATION ---
+    function switchTab(tabId, btnElement) {
+      document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('tab-' + tabId).classList.add('active');
+      btnElement.classList.add('active');
+    }
+
+    // --- DATABASE OPERATIONS ---
+    async function loadMedicinesDropdown() {
+      const { data, error } = await db.from('medicines').select('medid, name');
+      if (error) return console.error(error);
+      
+      const select = document.getElementById('newMedId');
+      if (data && data.length > 0) {
+        select.innerHTML = data.map(m => `<option value="${m.medid}">${m.name}</option>`).join('');
+      } else {
+        select.innerHTML = `<option value="">No medicines in database</option>`;
+      }
+    }
 
     async function loadInventory() {
       try {
@@ -51,19 +162,57 @@
           .order('expirydate', { ascending: true });
 
         if (error) throw error;
-        
-        if (!data || data.length === 0) {
-          document.getElementById('inventoryList').innerHTML = "No stock available in database.";
-          return;
-        }
-
-        appState.masterInventory = data;
+        appState.masterInventory = data || [];
         renderInventory();
+        renderStockManagement();
       } catch (err) {
-        document.getElementById('inventoryList').innerHTML = `<span class="error-text">Connection Error: ${err.message}</span>`;
+        document.getElementById('posInventoryList').innerHTML = `<span style="color:red;">Error: ${err.message}</span>`;
       }
     }
 
+    async function submitNewBatch(event) {
+      event.preventDefault(); 
+      const autoBatchId = 'B-' + Math.floor(1000 + Math.random() * 9000); 
+
+      const payload = {
+        batchid: autoBatchId,
+        medid: document.getElementById('newMedId').value,
+        batchnumber: document.getElementById('newBatchNum').value,
+        expirydate: document.getElementById('newExpDate').value,
+        stockqty: parseInt(document.getElementById('newQty').value),
+        mrp: parseFloat(document.getElementById('newMrp').value)
+      };
+
+      const { error } = await db.from('inventory_batches').insert([payload]);
+
+      if (error) {
+        alert('❌ Failed to add batch: ' + error.message);
+      } else {
+        alert('✅ Stock successfully added to database!');
+        document.getElementById('addBatchForm').reset();
+        await loadInventory(); 
+      }
+    }
+
+    async function processCheckout() {
+      if (appState.cart.length === 0) return alert('Cart is empty!');
+      const totalAmount = appState.cart.reduce((sum, item) => sum + item.lineTotal, 0);
+
+      const { data, error } = await db.rpc('process_checkout', {
+        cart_items: appState.cart, total_amount: totalAmount
+      });
+
+      if (error) {
+        alert('Transaction Failed: ' + error.message);
+      } else {
+        alert('✅ Sale Successful! Receipt ID: ' + data);
+        appState.cart = [];
+        await loadInventory(); 
+        renderCart();
+      }
+    }
+
+    // --- CART LOGIC ---
     function addToCart(medId, name) {
       let requestedQty = parseInt(prompt(`Enter quantity for ${name}:`, 1));
       if (!requestedQty || requestedQty <= 0) return;
@@ -72,7 +221,7 @@
       let availableBatches = appState.masterInventory.filter(b => b.medicines.medid === medId);
       const totalAvailable = availableBatches.reduce((sum, b) => sum + b.stockqty, 0);
       
-      if (requestedQty > totalAvailable) return alert('Insufficient Stock!');
+      if (requestedQty > totalAvailable) return alert('❌ Insufficient Stock!');
 
       for (let batch of availableBatches) {
         if (remainingQty === 0) break;
@@ -91,50 +240,80 @@
       renderInventory();
     }
 
-    async function processCheckout() {
-      if (appState.cart.length === 0) return alert('Cart is empty!');
-      const totalAmount = appState.cart.reduce((sum, item) => sum + item.lineTotal, 0);
-
-      const { data, error } = await db.rpc('process_checkout', {
-        cart_items: appState.cart, total_amount: totalAmount
-      });
-
-      if (error) {
-        alert('Transaction Failed: ' + error.message);
-      } else {
-        alert('Sale Successful! Receipt ID: ' + data);
-        appState.cart = [];
-        await loadInventory(); 
-      }
-      renderCart();
-    }
-
+    // --- RENDERING VIEWS ---
     function renderInventory() {
+      if (appState.masterInventory.length === 0) {
+        document.getElementById('posInventoryList').innerHTML = "No stock available.";
+        return;
+      }
       const html = appState.masterInventory.map(item => `
         <div class="item-row">
           <div>
             <strong>${item.medicines.name}</strong> <br>
-            <small>Exp: ${new Date(item.expirydate).toLocaleDateString()} | Stock: ${item.stockqty}</small>
+            <small style="color:#7f8c8d;">Exp: ${new Date(item.expirydate).toLocaleDateString()} | <span class="badge">Stock: ${item.stockqty}</span></small>
           </div>
-          <button onclick="addToCart('${item.medicines.medid}', '${item.medicines.name}')">Add</button>
+          <button class="btn" onclick="addToCart('${item.medicines.medid}', '${item.medicines.name}')">Add</button>
         </div>
       `).join('');
-      document.getElementById('inventoryList').innerHTML = html;
+      document.getElementById('posInventoryList').innerHTML = html;
+    }
+
+    function renderStockManagement() {
+      const html = appState.masterInventory.map(item => `
+        <div class="item-row">
+          <div>
+            <strong>${item.medicines.name}</strong> <br>
+            <small>Batch No: <strong>${item.batchid}</strong> | MRP: ₹${item.mrp}</small>
+          </div>
+          <div style="text-align:right;">
+            <div class="badge" style="font-size:1rem;">${item.stockqty} Units</div>
+          </div>
+        </div>
+      `).join('');
+      document.getElementById('masterStockList').innerHTML = html;
     }
 
     function renderCart() {
       let total = 0;
+      if (appState.cart.length === 0) {
+        document.getElementById('cartList').innerHTML = '<div style="color:#7f8c8d; font-style:italic;">Cart is empty</div>';
+        document.getElementById('cartTotal').innerText = "0.00";
+        return;
+      }
       const html = appState.cart.map(item => {
         total += item.lineTotal;
         return `<div class="item-row">
-          <span>${item.name} (Qty: ${item.qtyTaken}) [Batch: ${item.batchId}]</span>
-          <span>₹${item.lineTotal.toFixed(2)}</span>
+          <span>${item.name} <small>x${item.qtyTaken}</small></span>
+          <strong>₹${item.lineTotal.toFixed(2)}</strong>
         </div>`;
       }).join('');
       document.getElementById('cartList').innerHTML = html;
       document.getElementById('cartTotal').innerText = total.toFixed(2);
     }
 
+    // --- RECEIPT PREVIEW LOGIC ---
+    function previewReceipt() {
+      if (appState.cart.length === 0) return alert('Add items to the cart first.');
+      let total = 0;
+      const html = appState.cart.map(item => {
+        total += item.lineTotal;
+        return `<div class="receipt-row">
+          <span>${item.name.substring(0, 15)} (x${item.qtyTaken})</span>
+          <span>₹${item.lineTotal.toFixed(2)}</span>
+        </div>`;
+      }).join('');
+      
+      document.getElementById('receiptBody').innerHTML = html;
+      document.getElementById('receiptTotal').innerText = total.toFixed(2);
+      document.getElementById('receiptModal').style.display = 'flex';
+    }
+
+    function closePreview() {
+      document.getElementById('receiptModal').style.display = 'none';
+    }
+
+    // Initialize App
+    loadMedicinesDropdown();
     loadInventory();
   </script>
 </body>
