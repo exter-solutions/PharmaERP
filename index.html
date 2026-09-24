@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pharmacy Serverless POS</title>
+  <!-- 1. Load Supabase directly from the CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f4f9; padding: 1rem; margin: 0; }
+    .grid { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .panel { background: white; padding: 1rem; border-radius: 8px; flex: 1; min-width: 300px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .item-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+    button { background: #3498db; color: white; border: none; padding: 0.5rem; border-radius: 4px; cursor: pointer; }
+    button.checkout { background: #27ae60; width: 100%; font-size: 1.1rem; padding: 1rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+
+  <h2>Advanced Pharmacy Billing</h2>
+  
+  <div class="grid">
+    <div class="panel">
+      <h3>Inventory (Tap to add)</h3>
+      <div id="inventoryList">Loading inventory...</div>
+    </div>
+
+    <div class="panel">
+      <h3>Current Bill</h3>
+      <div id="cartList">Cart is empty</div>
+      <h3 style="text-align: right;">Total: ₹<span id="cartTotal">0.00</span></h3>
+      <button class="checkout" onclick="processCheckout()">Checkout Securely</button>
+    </div>
+  </div>
+
+  <script>
+    // 2. Initialize Supabase Connection
+    const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Application State
+    const appState = { masterInventory: [], cart: [] };
+
+    // 3. Fetch Data Directly from PostgreSQL
+    async function loadInventory() {
+      // Supabase turns your SQL tables into a simple JavaScript API
+      const { data, error } = await supabase
+        .from('inventory_batches')
+        .select(`
+          batchid, 
+          expirydate, 
+          stockqty, 
+          mrp,
+          medicines ( medid, name )
+        `)
+        .gt('stockqty', 0) // Only get items with stock > 0
+        .order('expirydate', { ascending: true }); // Automatically sort by nearest expiry!
+
+      if (error) return console.error("Error fetching inventory:", error);
+
+      appState.masterInventory = data;
+      renderInventory();
+    }
+
+    // 4. The FIFO Allocation Logic
+    function addToCart(medId, name) {
+      let requestedQty = parseInt(prompt(`Enter quantity for ${name}:`, 1));
+      if (!requestedQty || requestedQty <= 0) return;
+
+      let remainingQty = requestedQty;
+      
+      // Get valid batches for this specific medicine
+      let availableBatches = appState.masterInventory.filter(b => b.medicines.medid === medId);
+      
+      const totalAvailable = availableBatches.reduce((sum, b) => sum + b.stockqty, 0);
+      if (requestedQty > totalAvailable) return alert('Insufficient Stock!');
+
+      for (let batch of availableBatches) {
+        if (remainingQty === 0) break;
+        let qtyToTake = Math.min(batch.stockqty, remainingQty);
+
+        appState.cart.push({
+          medId: medId,
+          name: name,
+          batchId: batch.batchid,
+          qtyTaken: qtyToTake,
+          unitPrice: batch.mrp,
+          lineTotal: qtyToTake * batch.mrp
+        });
+
+        batch.stockqty -= qtyToTake; // Deduct from local state temporarily
+        remainingQty -= qtyToTake;
+      }
+      
+      renderCart();
+      renderInventory();
+    }
+
+    // 5. Trigger the Database Transaction (RPC)
+    async function processCheckout() {
+      if (appState.cart.length === 0) return alert('Cart is empty!');
+      const totalAmount = appState.cart.reduce((sum, item) => sum + item.lineTotal, 0);
+
+      // Call the 'process_checkout' SQL function you created earlier
+      const { data, error } = await supabase.rpc('process_checkout', {
+        cart_items: appState.cart,
+        total_amount: totalAmount
+      });
+
+      if (error) {
+        alert('Transaction Failed: ' + error.message);
+      } else {
+        alert('Sale Successful! Receipt ID: ' + data);
+        appState.cart = [];
+        await loadInventory(); // Refresh true stock from database
+      }
+      
+      renderCart();
+    }
+
+    // UI Render Functions
+    function renderInventory() {
+      const html = appState.masterInventory.map(item => `
+        <div class="item-row">
+          <div>
+            <strong>${item.medicines.name}</strong> <br>
+            <small>Exp: ${new Date(item.expirydate).toLocaleDateString()} | Stock: ${item.stockqty}</small>
+          </div>
+          <button onclick="addToCart('${item.medicines.medid}', '${item.medicines.name}')">Add</button>
+        </div>
+      `).join('');
+      document.getElementById('inventoryList').innerHTML = html;
+    }
+
+    function renderCart() {
+      let total = 0;
+      const html = appState.cart.map(item => {
+        total += item.lineTotal;
+        return `<div class="item-row">
+          <span>${item.name} (Qty: ${item.qtyTaken}) [Batch: ${item.batchId}]</span>
+          <span>₹${item.lineTotal.toFixed(2)}</span>
+        </div>`;
+      }).join('');
+      document.getElementById('cartList').innerHTML = html;
+      document.getElementById('cartTotal').innerText = total.toFixed(2);
+    }
+
+    // Start App
+    loadInventory();
+  </script>
+</body>
+</html>
